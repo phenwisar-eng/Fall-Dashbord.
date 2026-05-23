@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phenwisa RCA Fall Analysis Dashboard</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="p-6 max-w-7xl mx-auto space-y-6">
+
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800">RCA Fall Executive Dashboard</h1>
+            <p class="text-slate-500 text-sm mt-1">วิเคราะห์รากฐานปัญหาผู้ป่วยพลัดตกหกล้ม เพื่อการจัดการเชิงระบบ</p>
+        </div>
+        <div class="mt-4 md:mt-0 flex flex-col items-end">
+            <label class="block text-sm font-medium text-slate-700 mb-1">อัปโหลดไฟล์ข้อมูลของคุณ (CSV)</label>
+            <input type="file" id="csvFileInput" accept=".csv" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors" />
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500">
+            <div class="text-sm font-medium text-slate-500">อุบัติการณ์ทั้งหมด (Total Falls)</div>
+            <div class="text-3xl font-bold text-slate-800 mt-2" id="kpiTotal">0 <span class="text-sm font-normal text-slate-500">ครั้ง</span></div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-500">
+            <div class="text-sm font-medium text-slate-500">ความรุนแรงสูง (Level E ขึ้นไป)</div>
+            <div class="text-3xl font-bold text-red-600 mt-2" id="kpiSeverity">0 <span class="text-sm font-normal text-slate-500">ครั้ง</span></div>
+            <div class="text-xs text-slate-400 mt-1">ต้องทบทวนกระบวนการด่วน</div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-amber-500">
+            <div class="text-sm font-medium text-slate-500">ประเมินความเสี่ยงบกพร่อง</div>
+            <div class="text-3xl font-bold text-amber-600 mt-2" id="kpiMissing">0 <span class="text-sm font-normal text-slate-500">ราย</span></div>
+            <div class="text-xs text-slate-400 mt-1">ไม่ประเมินต่อเนื่อง / ไม่ติดป้ายเตือน</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">แนวโน้มการเกิดอุบัติการณ์รายเดือน</h2>
+            <div class="h-64"><canvas id="trendChart"></canvas></div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">สัดส่วนระดับความรุนแรง (Severity Level)</h2>
+            <div class="h-64 flex justify-center"><canvas id="severityChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">รากฐานปัญหา (Root Cause)</h2>
+            <div class="h-64"><canvas id="rootCauseChart"></canvas></div>
+            <p class="text-xs text-slate-500 mt-2">*หากสาเหตุหลักไปตกที่ "ด้านผู้ป่วย" มากเกินไป แสดงว่าการตั้งรับของ "ระบบ/กระบวนการ" ยังไม่ดีพอ</p>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">จุดเกิดเหตุซ้ำซาก (Hotspots)</h2>
+            <div class="h-64"><canvas id="locationChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-lg font-semibold text-slate-800 mb-4">คุณภาพกระบวนการ: การประเมินความเสี่ยงล่วงหน้า</h2>
+        <div class="h-64"><canvas id="assessmentChart"></canvas></div>
+        <div class="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
+            <strong>Insight:</strong> ข้อมูลชุดนี้ชี้ให้เห็นว่า หากมีผู้ป่วยที่ตกหกล้มโดยอยู่ในกลุ่ม "ไม่ได้ประเมิน" หรือ "ประเมินไม่ต่อเนื่อง" คุณต้องไปทบทวน Compliance ของพยาบาลด่วน ไม่ใช่ไปแก้ที่การสอนผู้ป่วยลุกนั่งเพียงอย่างเดียว
+        </div>
+    </div>
+
+    <script>
+        const defaultCSV = `ลำดับ,วดป,เดือน,ระดับอุบัติการณ์,OPD/IPD,หน่วยงาน,เพศ,อายุ,ความต่อเนื่องของการประเมินFall,ได้ติดป้ายสัญลักษณ์,อายุงาน,พื้นที่เกิดเหตุ,สาขาการพยาบาล,สรุปปัจจัยที่เป็นสาเหตุหลักของการเกิด fall
+1,18/10/2025,ตค,F,IPD,25B,ชาย,85,ต่อเนื่อง,ติด,ไม่มี,ในห้องน้ำ,ortho,ด้านผู้ป่วย
+2,31/10/2025,ตค,D,IPD,22B,ชาย,62,ต่อเนื่อง,ติด,19 ปี,ระหว่างทางเดิน,med,ด้านผู้ป่วย
+3,15/11/2025,พย,C,IPD,20C,หญิง,70,ต่อเนื่อง,ติด,5 ปี,ข้างเตียง,Surg,ระบบ/กระบวนการ
+4,27/04/2026,เมย,C,IPD,20C,ชาย,60,ต่อเนื่อง,ติด,1 ปี,ข้างเตียง,Surg,ระบบ/กระบวนการ
+5,07/05/2026,พค,D,IPD,22B,ชาย,41,ต่อเนื่อง,ติด,20 ปี,ข้างเตียง,med,ระบบ/กระบวนการ
+6,14/05/2026,พค,D,IPD,20C,ชาย,46,ไม่ได้ประเมิน,ไม่ติด,2ปี,ในห้องน้ำ,Surg,ระบบ/กระบวนการ
+7,20/05/2026,พค,E,IPD,25B,หญิง,55,ประเมินครั้งเดียว,ไม่ติด,1 ปี,ในห้องน้ำ,ortho,ด้านสิ่งแวดล้อม`;
+
+        let charts = {};
+
+        window.onload = function() {
+            processData(defaultCSV);
+            document.getElementById('csvFileInput').addEventListener('change', handleFile);
+        };
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) { processData(evt.target.result); };
+            reader.readAsText(file);
+        }
+
+        function processData(csvString) {
+            Papa.parse(csvString, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    renderDashboard(results.data);
+                }
+            });
+        }
+
+        function countData(data, key) {
+            let counts = {};
+            data.forEach(row => {
+                let val = (row[key] || 'ไม่ระบุ').trim();
+                counts[val] = (counts[val] || 0) + 1;
+            });
+            return counts;
+        }
+
+        function renderDashboard(data) {
+            // Update KPIs
+            document.getElementById('kpiTotal').innerHTML = `${data.length} <span class="text-sm font-normal text-slate-500">ครั้ง</span>`;
+            
+            let highSev = data.filter(d => ['E','F','G','H','I'].includes(d['ระดับอุบัติการณ์']?.trim())).length;
+            document.getElementById('kpiSeverity').innerHTML = `${highSev} <span class="text-sm font-normal text-slate-500">ครั้ง</span>`;
+            
+            let defectAssess = data.filter(d => d['ความต่อเนื่องของการประเมินFall']?.trim() === 'ไม่ได้ประเมิน' || d['ได้ติดป้ายสัญลักษณ์']?.trim() === 'ไม่ติด').length;
+            document.getElementById('kpiMissing').innerHTML = `${defectAssess} <span class="text-sm font-normal text-slate-500">ราย</span>`;
+
+            // Prepare Data for Charts
+            let monthsOrder = ['มค', 'กพ', 'มีค', 'เมย', 'พค', 'มิย', 'กค', 'สค', 'กย', 'ตค', 'พย', 'ธค'];
+            let monthCounts = countData(data, 'เดือน');
+            let trendData = monthsOrder.map(m => monthCounts[m] || 0);
+
+            let severityCounts = countData(data, 'ระดับอุบัติการณ์');
+            let rootCounts = countData(data, 'สรุปปัจจัยที่เป็นสาเหตุหลักของการเกิด fall');
+            let locCounts = countData(data, 'พื้นที่เกิดเหตุ');
+            let assessCounts = countData(data, 'ความต่อเนื่องของการประเมินFall');
+
+            // Destroy old charts if exist
+            Object.keys(charts).forEach(k => charts[k].destroy());
+
+            // 1. Trend Chart
+            charts.trend = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: { labels: monthsOrder, datasets: [{ label: 'จำนวนครั้ง', data: trendData, borderColor: '#3b82f6', tension: 0.2, fill: false, borderWidth: 3 }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 2. Severity Chart
+            charts.severity = new Chart(document.getElementById('severityChart'), {
+                type: 'doughnut',
+                data: { labels: Object.keys(severityCounts), datasets: [{ data: Object.values(severityCounts), backgroundColor: ['#ef4444', '#fbbf24', '#fcd34d', '#10b981', '#3b82f6'] }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 3. Root Cause Chart
+            charts.root = new Chart(document.getElementById('rootCauseChart'), {
+                type: 'bar',
+                data: { labels: Object.keys(rootCounts), datasets: [{ label: 'จำนวน', data: Object.values(rootCounts), backgroundColor: '#6366f1' }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
+            });
+
+            // 4. Location Chart
+            charts.location = new Chart(document.getElementById('locationChart'), {
+                type: 'bar',
+                data: { labels: Object.keys(locCounts), datasets: [{ label: 'จำนวนครั้ง', data: Object.values(locCounts), backgroundColor: '#ef4444' }] },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 5. Assessment Chart
+            charts.assess = new Chart(document.getElementById('assessmentChart'), {
+                type: 'bar',
+                data: { labels: Object.keys(assessCounts), datasets: [{ label: 'จำนวนราย', data: Object.values(assessCounts), backgroundColor: '#f59e0b' }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false }
+            });
+        }
+    </script>
+</body>
+</html>
